@@ -47,8 +47,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # --- دالة الترجمة ---
 def t(key: str, context: ContextTypes.DEFAULT_TYPE, update_obj: Update, **kwargs) -> str:
     lang_code = context.user_data.get('language')
-    if not lang_code:
-        lang_code = update_obj.effective_user.language_code
+    user = update_obj.effective_user or (update_obj.callback_query and update_obj.callback_query.from_user)
+    if not lang_code and user:
+        lang_code = user.language_code
     lang = 'ar' if lang_code == 'ar' else 'en'
     text_or_list = translations.get(lang, {}).get(key, f"Key '{key}' not found.")
     if isinstance(text_or_list, list): text = "\n".join(text_or_list)
@@ -77,12 +78,14 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await start_command(update, context, from_callback=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False) -> None:
-    effective_update = update.callback_query if from_callback else update
     # --- هنا كان الخطأ وتم تصحيحه ---
-    if await is_user_in_group(effective_update.effective_user.id, context):
-        await effective_update.message.reply_text(t('welcome', context, effective_update))
+    user = update.effective_user or (update.callback_query and update.callback_query.from_user)
+    message_to_reply = update.effective_message or (update.callback_query and update.callback_query.message)
+    
+    if await is_user_in_group(user.id, context):
+        await message_to_reply.reply_text(t('welcome', context, update))
     else:
-        await effective_update.message.reply_text(t('join_group', context, effective_update, group_username=GROUP_USERNAME))
+        await message_to_reply.reply_text(t('join_group', context, update, group_username=GROUP_USERNAME))
 
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
@@ -162,7 +165,7 @@ def main() -> None:
     application.add_handler(CommandHandler("scan", scan_command))
     application.add_handler(CommandHandler("asn", asn_command))
     
-    logger.info("Bot is starting with final fix...")
+    logger.info("Bot is starting with final-final fix...")
     application.run_polling()
 
 if __name__ == "__main__":
