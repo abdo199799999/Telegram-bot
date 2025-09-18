@@ -1,19 +1,17 @@
 import requests
 import logging
 import asyncio
-import os  # <-- تم إضافة هذا السطر
+import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# --- الإعدادات (تقرأ الآن من متغيرات البيئة) ---
+# --- الإعدادات (تقرأ من متغيرات البيئة) ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
 
 # --- التحقق من وجود المفاتيح ---
 if not TELEGRAM_BOT_TOKEN or not URLSCAN_API_KEY:
     logging.error("ERROR: Missing environment variables (TELEGRAM_BOT_TOKEN or URLSCAN_API_KEY)")
-    # في بيئة الإنتاج، قد ترغب في الخروج من البرنامج إذا كانت المفاتيح غير موجودة
-    # exit()
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -50,12 +48,12 @@ async def find_subdomains_paginated_async(domain: str) -> list[str] | None:
                 break
         return sorted(list(subdomains))
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
+        logger.error(f"An unexpected error occurred with urlscan.io: {e}")
         return None
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "أهلاً بك! أنا بوت البحث الشامل (مستضاف على السحابة).\n"
+        "أهلاً بك! أنا بوت البحث عن النطاقات الفرعية.\n"
         "استخدم الأمر /scan متبوعاً باسم النطاق للبدء."
     )
 
@@ -66,13 +64,19 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     domain_to_scan = context.args[0]
     await update.message.reply_text(f"🔍 جاري البحث عن نطاقات {domain_to_scan}... قد يستغرق هذا بعض الوقت.")
     subdomains = await find_subdomains_paginated_async(domain_to_scan)
+    
+    # --- التعديلات المطلوبة هنا ---
     if subdomains is None:
-        await update.message.reply_text("حدث خطأ أثناء الاتصال بخدمة urlscan.io. تأكد من صحة مفتاح الـ API.")
+        # 1. تغيير رسالة الخطأ
+        await update.message.reply_text("حدث خطأ أثناء البحث.")
     elif not subdomains:
         await update.message.reply_text(f"لم يتم العثور على أي نطاقات فرعية لـ {domain_to_scan}.")
     else:
-        results_text = f"✅ تم العثور على {len(subdomains)} نطاق فرعي لـ {domain_to_scan}:\\n\\n"
-        message_body = "\\n".join(subdomains)
+        # 2. تغيير تنسيق النتائج
+        results_text = f"✅ تم العثور على {len(subdomains)} نطاق فرعي لـ {domain_to_scan}:\n\n"
+        message_body = "\n".join(subdomains)  # استخدام فاصل أسطر جديد
+        
+        # إرسال النتائج في ملف إذا كانت طويلة جداً
         if len(results_text + message_body) > 4096:
             await update.message.reply_text(f"النتائج كثيرة جداً ({len(subdomains)} نطاق)، سيتم إرسالها في ملف.")
             with open("subdomains.txt", "w") as f:
