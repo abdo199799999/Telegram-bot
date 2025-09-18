@@ -3,6 +3,7 @@ import logging
 import asyncio
 import os
 import json
+import traceback
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 from telegram.error import BadRequest
@@ -12,6 +13,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
 GROUP_ID = -1002000171927
 GROUP_USERNAME = "fastNetAbdo"
+# --- معرف المطور (أنت) لاستقبال رسائل الأخطاء ---
+DEVELOPER_CHAT_ID = 5653624044 # <-- تم إضافة معرفك هنا
 
 # --- تحميل ملفات الترجمة ---
 try:
@@ -25,52 +28,61 @@ except FileNotFoundError:
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- دالة الترجمة (تم تحديثها لتقرأ من ذاكرة المستخدم) ---
+# --- معالج الأخطاء العالمي (الجديد) ---
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Exception while handling an update:", exc_info=context.error)
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = "".join(tb_list)
+    
+    # إرسال رسالة خطأ مفصلة إلى المطور
+    error_message = (
+        f"An exception was raised while handling an update\n"
+        f"<pre>update = {json.dumps(update.to_dict() if isinstance(update, Update) else str(update), indent=2, ensure_ascii=False)}</pre>\n\n"
+        f"<pre>context.chat_data = {str(context.chat_data)}</pre>\n\n"
+        f"<pre>context.user_data = {str(context.user_data)}</pre>\n\n"
+        f"<pre>{tb_string}</pre>"
+    )
+    
+    # تقسيم الرسالة إذا كانت طويلة جداً
+    if len(error_message) > 4096:
+        for x in range(0, len(error_message), 4096):
+            await context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=error_message[x:x+4096], parse_mode='HTML')
+    else:
+        await context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=error_message, parse_mode='HTML')
+
+# --- دالة الترجمة ---
 def t(key: str, context: ContextTypes.DEFAULT_TYPE, update_obj: Update, **kwargs) -> str:
     lang_code = context.user_data.get('language')
     if not lang_code:
         lang_code = update_obj.effective_user.language_code
-    
     lang = 'ar' if lang_code == 'ar' else 'en'
     text_or_list = translations.get(lang, {}).get(key, f"Key '{key}' not found.")
-    
-    if isinstance(text_or_list, list):
-        text = "\n".join(text_or_list)
-    else:
-        text = text_or_list
-        
+    if isinstance(text_or_list, list): text = "\n".join(text_or_list)
+    else: text = text_or_list
     return text.format(**kwargs)
 
-# --- دالة التحقق من الاشتراك ---
+# (باقي دوال البوت تبقى كما هي تماماً)
 async def is_user_in_group(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=GROUP_ID, user_id=user_id)
         return member.status in ['creator', 'administrator', 'member']
-    except Exception:
-        return False
+    except Exception: return False
 
-# --- الأوامر ---
 async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    keyboard = [
-        [InlineKeyboardButton("العربية 🇸🇦", callback_data='set_lang_ar')],
-        [InlineKeyboardButton("English 🇬🇧", callback_data='set_lang_en')],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Please choose your language / الرجاء اختيار لغتك:", reply_markup=reply_markup)
+    keyboard = [[InlineKeyboardButton("العربية 🇸🇦", callback_data='set_lang_ar')], [InlineKeyboardButton("English 🇬🇧", callback_data='set_lang_en')]]
+    await update.message.reply_text("Please choose your language / الرجاء اختيار لغتك:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     lang_code = query.data.split('_')[-1]
     context.user_data['language'] = lang_code
-    
     lang_name = "العربية" if lang_code == 'ar' else "English"
     await query.edit_message_text(text=f"Language has been set to {lang_name}.\nتم ضبط اللغة إلى {lang_name}.")
     await start_command(update, context, from_callback=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False) -> None:
     effective_update = update.callback_query if from_callback else update
-    
     if await is_user_in_group(effective_update.from_user.id, context):
         await effective_update.message.reply_text(t('welcome', context, effective_update))
     else:
@@ -78,12 +90,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
 
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
-        await update.message.reply_text(t('join_group', context, update, group_username=GROUP_USERNAME))
-        return
+        await update.message.reply_text(t('join_group', context, update, group_username=GROUP_USERNAME)); return
     if not context.args:
-        await update.message.reply_text(t('specify_domain', context, update))
-        return
-    
+        await update.message.reply_text(t('specify_domain', context, update)); return
     target = context.args[0]
     await update.message.reply_text(t('searching_domain', context, update, target=target))
     results = await search_urlscan_async(f"page.domain:{target}")
@@ -92,21 +101,16 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def asn_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
-        await update.message.reply_text(t('join_group', context, update, group_username=GROUP_USERNAME))
-        return
+        await update.message.reply_text(t('join_group', context, update, group_username=GROUP_USERNAME)); return
     if not context.args:
-        await update.message.reply_text(t('specify_asn', context, update))
-        return
-    
+        await update.message.reply_text(t('specify_asn', context, update)); return
     target = context.args[0].upper()
     if not target.startswith("AS"): target = "AS" + target
-    
     await update.message.reply_text(t('searching_asn', context, update, target=target))
     results = await search_urlscan_async(f"asn:{target}")
     target_info = t('target_info_asn', context, update, target=target)
     await process_and_send_results(update, context, results, target_info, target, 'no_results_asn')
 
-# --- دوال مساعدة ---
 async def search_urlscan_async(query: str) -> list[str] | None:
     headers = {"API-Key": URLSCAN_API_KEY}
     domains = set()
@@ -150,19 +154,23 @@ async def process_and_send_results(update: Update, context: ContextTypes.DEFAULT
             await update.message.reply_text(results_text + message_body)
 
 def main() -> None:
-    if not all([TELEGRAM_BOT_TOKEN, URLSCAN_API_KEY, translations]):
-        logging.critical("CRITICAL: Bot cannot start due to missing config or language files.")
+    if not all([TELEGRAM_BOT_TOKEN, URLSCAN_API_KEY, translations, DEVELOPER_CHAT_ID]):
+        logging.critical("CRITICAL: Bot cannot start due to missing config.")
         return
         
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
+    # تسجيل معالج الأخطاء العالمي
+    application.add_error_handler(error_handler)
+    
+    # إضافة الأوامر
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^set_lang_'))
     application.add_handler(CommandHandler("scan", scan_command))
     application.add_handler(CommandHandler("asn", asn_command))
     
-    logger.info("Bot is starting on the cloud with user-selectable language...")
+    logger.info("Bot is starting with global error handler...")
     application.run_polling()
 
 if __name__ == "__main__":
