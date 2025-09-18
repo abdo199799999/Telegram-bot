@@ -1,12 +1,19 @@
 import requests
 import logging
 import asyncio
+import os  # <-- تم إضافة هذا السطر
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# --- الإعدادات ---
-TELEGRAM_BOT_TOKEN = "8353929838:AAE93C1oaHE3naf9KWKDZ9KpErw4HXkwHVA"
-URLSCAN_API_KEY = "01994df2-ce2c-7166-bffb-581908b5cf77"
+# --- الإعدادات (تقرأ الآن من متغيرات البيئة) ---
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
+
+# --- التحقق من وجود المفاتيح ---
+if not TELEGRAM_BOT_TOKEN or not URLSCAN_API_KEY:
+    logging.error("ERROR: Missing environment variables (TELEGRAM_BOT_TOKEN or URLSCAN_API_KEY)")
+    # في بيئة الإنتاج، قد ترغب في الخروج من البرنامج إذا كانت المفاتيح غير موجودة
+    # exit()
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -60,7 +67,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(f"🔍 جاري البحث عن نطاقات {domain_to_scan}... قد يستغرق هذا بعض الوقت.")
     subdomains = await find_subdomains_paginated_async(domain_to_scan)
     if subdomains is None:
-        await update.message.reply_text("حدث خطأ أثناء الاتصال بخدمة urlscan.io.")
+        await update.message.reply_text("حدث خطأ أثناء الاتصال بخدمة urlscan.io. تأكد من صحة مفتاح الـ API.")
     elif not subdomains:
         await update.message.reply_text(f"لم يتم العثور على أي نطاقات فرعية لـ {domain_to_scan}.")
     else:
