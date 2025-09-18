@@ -7,16 +7,15 @@
         "🔹 `/asn AS15169` to search for domains related to an ASN.",
         "🔹 `/lang` to change the language."
     ],
-    "join_group": "Sorry, you must join our group first to use the bot: @{group_username}",
     "specify_domain": "Please specify a domain. Example: /scan google.com",
     "specify_asn": "Please specify an ASN. Example: /asn AS15169",
-    "searching_domain": "🔍 Performing a deep search for {target} subdomains... This may take some time.",
-    "searching_asn": "🔍 Searching for domains related to {target}...",
+    "searching_domain": "🔍 Performing a deep search for {target}... This may take some time.",
+    "searching_asn": "🔍 Performing a deep search for domains related to {target}...",
     "error_searching": "An error occurred during the search. Please try again.",
     "no_results_domain": "No subdomains found for {target}.",
-    "no_results_asn": "No domains found for ASN {target}.",
-    "found_results": "✅ Found {count} domains for {target_info}:",
-    "target_info_domain": "{target}",
+    "no_results_asn": "No results found for {target}.",
+    "found_results": "✅ Found {count} results for {target_info}:",
+    "target_info_domain": "the domain {target}",
     "target_info_asn": "ASN {target}",
-    "too_many_results": "The results are too numerous ({count} domains), they will be sent in a file."
+    "too_many_results": "The results are too numerous ({count}) and will be sent as a file."
 }
