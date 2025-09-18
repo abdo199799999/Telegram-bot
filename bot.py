@@ -13,8 +13,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
 GROUP_ID = -1002000171927
 GROUP_USERNAME = "fastNetAbdo"
-# --- معرف المطور (أنت) لاستقبال رسائل الأخطاء ---
-DEVELOPER_CHAT_ID = 5653624044 # <-- تم إضافة معرفك هنا
+DEVELOPER_CHAT_ID = 5653624044
 
 # --- تحميل ملفات الترجمة ---
 try:
@@ -28,22 +27,17 @@ except FileNotFoundError:
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- معالج الأخطاء العالمي (الجديد) ---
+# --- معالج الأخطاء العالمي ---
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Exception while handling an update:", exc_info=context.error)
     tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
     tb_string = "".join(tb_list)
-    
-    # إرسال رسالة خطأ مفصلة إلى المطور
     error_message = (
         f"An exception was raised while handling an update\n"
         f"<pre>update = {json.dumps(update.to_dict() if isinstance(update, Update) else str(update), indent=2, ensure_ascii=False)}</pre>\n\n"
-        f"<pre>context.chat_data = {str(context.chat_data)}</pre>\n\n"
         f"<pre>context.user_data = {str(context.user_data)}</pre>\n\n"
         f"<pre>{tb_string}</pre>"
     )
-    
-    # تقسيم الرسالة إذا كانت طويلة جداً
     if len(error_message) > 4096:
         for x in range(0, len(error_message), 4096):
             await context.bot.send_message(chat_id=DEVELOPER_CHAT_ID, text=error_message[x:x+4096], parse_mode='HTML')
@@ -61,13 +55,14 @@ def t(key: str, context: ContextTypes.DEFAULT_TYPE, update_obj: Update, **kwargs
     else: text = text_or_list
     return text.format(**kwargs)
 
-# (باقي دوال البوت تبقى كما هي تماماً)
+# --- دالة التحقق من الاشتراك ---
 async def is_user_in_group(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=GROUP_ID, user_id=user_id)
         return member.status in ['creator', 'administrator', 'member']
     except Exception: return False
 
+# --- الأوامر ---
 async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [[InlineKeyboardButton("العربية 🇸🇦", callback_data='set_lang_ar')], [InlineKeyboardButton("English 🇬🇧", callback_data='set_lang_en')]]
     await update.message.reply_text("Please choose your language / الرجاء اختيار لغتك:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -83,7 +78,8 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False) -> None:
     effective_update = update.callback_query if from_callback else update
-    if await is_user_in_group(effective_update.from_user.id, context):
+    # --- هنا كان الخطأ وتم تصحيحه ---
+    if await is_user_in_group(effective_update.effective_user.id, context):
         await effective_update.message.reply_text(t('welcome', context, effective_update))
     else:
         await effective_update.message.reply_text(t('join_group', context, effective_update, group_username=GROUP_USERNAME))
@@ -159,18 +155,14 @@ def main() -> None:
         return
         
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    # تسجيل معالج الأخطاء العالمي
     application.add_error_handler(error_handler)
-    
-    # إضافة الأوامر
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^set_lang_'))
     application.add_handler(CommandHandler("scan", scan_command))
     application.add_handler(CommandHandler("asn", asn_command))
     
-    logger.info("Bot is starting with global error handler...")
+    logger.info("Bot is starting with final fix...")
     application.run_polling()
 
 if __name__ == "__main__":
