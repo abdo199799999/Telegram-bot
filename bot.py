@@ -24,23 +24,32 @@ async def find_subdomains_paginated_async(domain: str) -> list[str] | None:
     search_after = None
     try:
         while True:
-            params = {"q": f"domain:{domain}", "size": 10000}
+            # --- التعديل الوحيد والمهم هنا ---
+            # استخدمنا "page.domain" بدلاً من "domain" لنتائج أكثر دقة
+            params = {"q": f"page.domain:{domain}", "size": 10000}
+            
             if search_after:
                 params["search_after"] = f"{search_after[0]},{search_after[1]}"
+            
             response = await asyncio.to_thread(requests.get, "https://urlscan.io/api/v1/search/", params=params, headers=headers)
+            
             if response.status_code == 429:
                 logger.warning("Rate limit hit. Waiting for 60 seconds.")
                 await asyncio.sleep(60)
                 continue
+            
             response.raise_for_status()
             data = response.json()
             results = data.get("results", [])
+            
             if not results:
                 break
+            
             for result in results:
                 page_domain = result.get("page", {}).get("domain")
                 if page_domain and page_domain.endswith(domain):
                     subdomains.add(page_domain)
+            
             if data.get("has_more"):
                 search_after = results[-1]["sort"]
                 await asyncio.sleep(1)
@@ -48,7 +57,8 @@ async def find_subdomains_paginated_async(domain: str) -> list[str] | None:
                 break
         return sorted(list(subdomains))
     except Exception as e:
-        logger.error(f"An unexpected error occurred with urlscan.io: {e}")
+        # قمنا بإضافة تفاصيل الخطأ إلى السجلات للمساعدة في التشخيص
+        logger.error(f"An unexpected error occurred with urlscan.io: {e}", exc_info=True)
         return None
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -61,22 +71,20 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not context.args:
         await update.message.reply_text("الرجاء تحديد اسم النطاق. مثال: /scan google.com")
         return
+    
     domain_to_scan = context.args[0]
-    await update.message.reply_text(f"🔍 جاري البحث عن نطاقات {domain_to_scan}... قد يستغرق هذا بعض الوقت.")
+    await update.message.reply_text(f"🔍 جاري البحث الدقيق عن نطاقات {domain_to_scan}... قد يستغرق هذا بعض الوقت.")
+    
     subdomains = await find_subdomains_paginated_async(domain_to_scan)
     
-    # --- التعديلات المطلوبة هنا ---
     if subdomains is None:
-        # 1. تغيير رسالة الخطأ
         await update.message.reply_text("حدث خطأ أثناء البحث.")
     elif not subdomains:
         await update.message.reply_text(f"لم يتم العثور على أي نطاقات فرعية لـ {domain_to_scan}.")
     else:
-        # 2. تغيير تنسيق النتائج
         results_text = f"✅ تم العثور على {len(subdomains)} نطاق فرعي لـ {domain_to_scan}:\n\n"
-        message_body = "\n".join(subdomains)  # استخدام فاصل أسطر جديد
+        message_body = "\n".join(subdomains)
         
-        # إرسال النتائج في ملف إذا كانت طويلة جداً
         if len(results_text + message_body) > 4096:
             await update.message.reply_text(f"النتائج كثيرة جداً ({len(subdomains)} نطاق)، سيتم إرسالها في ملف.")
             with open("subdomains.txt", "w") as f:
