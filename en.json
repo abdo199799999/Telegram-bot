@@ -1,16 +1,22 @@
 {
-  "welcome": "Welcome! I am the advanced search bot.\n\nUse the following commands:\n🔹 `/scan domain.com` to search for subdomains.\n🔹 `/asn AS15169` to search for domains related to an ASN.",
-  "join_group": "Sorry, you must join the group first to use the bot.\nGroup link: https://t.me/{group_username}",
-  "specify_domain": "Please specify a domain. Example: /scan google.com",
-  "specify_asn": "Please specify an ASN. Example: /asn AS15169",
-  "searching_domain": "🔍 Searching for subdomains of {target}...",
-  "searching_asn": "🔍 Searching for domains related to {target}...",
-  "error_searching": "An error occurred during the search.",
-  "no_results_domain": "No subdomains found for {target}.",
-  "no_results_asn": "No domains found for {target}.",
-  "found_results": "✅ Found {count} domains {target_info}:\n\n",
-  "too_many_results": "Too many results ({count} domains), sending as a file.",
-  "target_info_domain": "for domain {target}",
-  "target_info_asn": "for ASN {target}"
+    "welcome": [
+        "Welcome! I am the advanced search bot.",
+        "",
+        "Use the following commands:",
+        "🔹 `/scan domain.com` to search for subdomains.",
+        "🔹 `/asn AS15169` to search for domains related to an ASN.",
+        "🔹 `/lang` to change the language."
+    ],
+    "join_group": "Sorry, you must join our group first to use the bot: @{group_username}",
+    "specify_domain": "Please specify a domain. Example: /scan google.com",
+    "specify_asn": "Please specify an ASN. Example: /asn AS15169",
+    "searching_domain": "🔍 Performing a deep search for {target} subdomains... This may take some time.",
+    "searching_asn": "🔍 Searching for domains related to {target}...",
+    "error_searching": "An error occurred during the search. Please try again.",
+    "no_results_domain": "No subdomains found for {target}.",
+    "no_results_asn": "No domains found for ASN {target}.",
+    "found_results": "✅ Found {count} domains for {target_info}:",
+    "target_info_domain": "{target}",
+    "target_info_asn": "ASN {target}",
+    "too_many_results": "The results are too numerous ({count} domains), they will be sent in a file."
 }
-
