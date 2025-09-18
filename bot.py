@@ -1,5 +1,3 @@
-# إنشاء ملف bot.py
-cat > bot.py << EOL
 import requests
 import logging
 import asyncio
@@ -85,25 +83,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EOL
-
-# إنشاء ملف requirements.txt
-cat > requirements.txt << EOL
-requests
-python-telegram-bot
-EOL
-
-# إنشاء ملف render.yaml (مع التعديل)
-cat > render.yaml << EOL
-services:
-  - type: worker
-    name: telegram-subdomain-bot
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python bot.py"  # <-- تم التعديل هنا
-    rootDir: ./telegram_subdomain_bot
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.4
-EOL
 
