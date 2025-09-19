@@ -1,9 +1,3 @@
-# الخطوة 1: تحديث ملف المتطلبات (requirements.txt)
-echo "python-telegram-bot>=20.0" > requirements.txt
-echo "requests" >> requirements.txt
-
-# الخطوة 2: كتابة الكود الجديد بالكامل في ملف bot.py
-cat > bot.py << 'EOF'
 import os
 import requests
 import time
@@ -16,7 +10,7 @@ from telegram.error import BadRequest
 # --- الإعدادات ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
-GROUP_ID = -1002000171927  # تأكد من صحة هذا الرقم
+GROUP_ID = -1002000171927
 GROUP_USERNAME = "fastNetAbdo"
 
 if not TELEGRAM_BOT_TOKEN or not URLSCAN_API_KEY:
@@ -29,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 # --- دوال مساعدة للتفاعل مع urlscan.io API ---
 
-# دالة البحث الحالية لديك (ممتازة للبحث عن قوائم)
 async def search_urlscan_list_async(query: str) -> list[str] | None:
     headers = {"API-Key": URLSCAN_API_KEY}
     domains = set()
@@ -69,7 +62,6 @@ async def search_urlscan_list_async(query: str) -> list[str] | None:
         logger.error(f"An unexpected error occurred with urlscan.io search: {e}", exc_info=True)
         return None
 
-# دالة جديدة لجلب نتائج فحص واحد (للمعلومات ولقطة الشاشة)
 async def get_single_scan_results_async(domain: str) -> dict | None:
     headers = {"API-Key": URLSCAN_API_KEY, "Content-Type": "application/json"}
     data = {"url": domain, "visibility": "public"}
@@ -223,10 +215,11 @@ async def process_and_send_results(update: Update, context: ContextTypes.DEFAULT
         
         if len(results_text + message_body) > 4096:
             await update.message.reply_text(f"النتائج كثيرة جداً ({len(results)} نطاق)، سيتم إرسالها في ملف.")
-            with open("results.txt", "w") as f:
+            file_path = "results.txt"
+            with open(file_path, "w") as f:
                 f.write(message_body)
-            await context.bot.send_document(chat_id=update.effective_chat.id, document=open("results.txt", "rb"), filename=f"results_{target_info.replace(' ', '_')}.txt")
-            os.remove("results.txt")
+            await context.bot.send_document(chat_id=update.effective_chat.id, document=open(file_path, "rb"), filename=f"results_{target_info.replace(' ', '_')}.txt")
+            os.remove(file_path)
         else:
             await update.message.reply_text(results_text + message_body)
 
@@ -244,13 +237,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EOF
-
-# الخطوة 3: رفع التغييرات إلى GitHub
-git add .
-git commit -m "feat: Update bot with info/screenshot and fix requirements"
-git push
-
-echo "✅ تم تحديث الملفات ورفعها إلى GitHub بنجاح. سيتم الآن بدء النشر على Koyeb."
-
 
