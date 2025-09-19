@@ -23,53 +23,53 @@ logger = logging.getLogger(__name__)
 
 # --- دوال مساعدة للتفاعل مع urlscan.io API ---
 
-# ⭐️⭐️⭐️ تم إصلاح هذه الدالة لتكون سريعة وقوية ⭐️⭐️⭐️
+# ⭐️⭐️⭐️ استعادة دالة البحث الأصلية التي كانت تعمل مع تحسين بسيط ⭐️⭐️⭐️
 async def search_urlscan_list_async(query: str) -> list[str] | None:
     headers = {"API-Key": URLSCAN_API_KEY}
     domains = set()
-    params = {"q": query, "size": 1000}
-    
-    try:
-        # استخدام `await asyncio.to_thread` للقيام بالطلب في thread منفصل
-        response = await asyncio.to_thread(
-            requests.get, 
-            "https://urlscan.io/api/v1/search/", 
-            params=params, 
-            headers=headers
-        )
-        
-        # التحقق من حالة الاستجابة أولاً
-        if response.status_code == 429:
-            logger.warning("Rate limit hit. Please try again in a minute.")
-            # يمكن إرجاع قائمة فارغة أو رسالة خطأ محددة
-            return [] 
-        
-        # إطلاق استثناء لأي أخطاء أخرى (مثل 400, 500)
-        response.raise_for_status()
-        
-        data = response.json()
-        results = data.get("results", [])
-        
-        if not results:
-            # إذا لم تكن هناك نتائج، أرجع قائمة فارغة
-            return []
+    search_after = None
+    # إضافة حد أقصى لعدد الصفحات لمنع البحث الطويل جداً
+    max_pages = 5  # سيجلب حتى 5000 نتيجة كحد أقصى (5 صفحات * 1000 نتيجة)
+    current_page = 0
 
-        for result in results:
-            page_domain = result.get("page", {}).get("domain")
-            if page_domain:
-                domains.add(page_domain)
+    try:
+        while current_page < max_pages:
+            current_page += 1
+            params = {"q": query, "size": 1000}
+            if search_after:
+                params["search_after"] = f"{search_after[0]},{search_after[1]}"
+            
+            logger.info(f"Fetching page {current_page} for query: {query}")
+            response = await asyncio.to_thread(requests.get, "https://urlscan.io/api/v1/search/", params=params, headers=headers)
+            
+            if response.status_code == 429:
+                logger.warning("Rate limit hit. Waiting for 60 seconds.")
+                await asyncio.sleep(60)
+                current_page -= 1 # إعادة محاولة نفس الصفحة
+                continue
+            
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("results", [])
+            
+            if not results:
+                break # لا توجد نتائج، توقف
+            
+            for result in results:
+                page_domain = result.get("page", {}).get("domain")
+                if page_domain:
+                    domains.add(page_domain)
+            
+            if data.get("has_more"):
+                search_after = results[-1]["sort"]
+                await asyncio.sleep(1) # انتظار بسيط بين الطلبات
+            else:
+                break # لا توجد صفحات أخرى، توقف
         
         return sorted(list(domains))
-
-    except requests.exceptions.RequestException as e:
-        # هذا يلتقط أخطاء الشبكة و HTTP بشكل أفضل
-        logger.error(f"A network or HTTP error occurred: {e}", exc_info=True)
-        return None # يشير إلى فشل حقيقي
     except Exception as e:
-        # يلتقط أي أخطاء أخرى غير متوقعة (مثل خطأ في تحليل JSON)
-        logger.error(f"An unexpected error occurred in search_urlscan_list_async: {e}", exc_info=True)
+        logger.error(f"An unexpected error occurred with urlscan.io search: {e}", exc_info=True)
         return None
-
 
 async def get_single_scan_results_async(domain: str) -> dict | None:
     headers = {"API-Key": URLSCAN_API_KEY, "Content-Type": "application/json"}
@@ -100,7 +100,7 @@ async def get_single_scan_results_async(domain: str) -> dict | None:
         logger.error(f"An unexpected error occurred in get_single_scan_results_async: {e}", exc_info=True)
         return None
 
-# --- دالة التحقق من الاشتراك ---
+# --- بقية الكود كما هو ---
 async def is_user_in_group(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=GROUP_ID, user_id=user_id)
@@ -112,62 +112,61 @@ async def is_user_in_group(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.error(f"An unexpected error occurred in is_user_in_group: {e}")
         return False
 
-# --- الأوامر ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await is_user_in_group(update.effective_user.id, context):
         await update.message.reply_text(
-            "أهلاً بك! أنا بوت البحث السريع.\n\n"
+            "أهلاً بك! أنا بوت البحث المتقدم.\n\n"
             "استخدم الأوامر التالية:\n"
-            "🔹 `/scan domain.com` للبحث عن النطاقات الفرعية.\n"
-            "🔹 `/asn AS15169` للبحث عن النطاقات المرتبطة برقم ASN.\n"
-            "🔹 `/info domain.com` لعرض معلومات أساسية عن الموقع.\n"
-            "🔹 `/screenshot domain.com` للحصول على لقطة شاشة للموقع."
+            "🔹 `/scan domain.com`\n"
+            "🔹 `/asn AS15169`\n"
+            "🔹 `/info domain.com`\n"
+            "🔹 `/screenshot domain.com`"
         )
     else:
         await update.message.reply_text(
-            f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً لاستخدام البوت.\n"
+            f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.\n"
             f"رابط المجموعة: https://t.me/{GROUP_USERNAME}"
         )
 
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
-        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.\nرابط المجموعة: https://t.me/{GROUP_USERNAME}")
+        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.")
         return
 
     if not context.args:
-        await update.message.reply_text("الرجاء تحديد اسم النطاق. مثال: /scan google.com")
+        await update.message.reply_text("مثال: /scan google.com")
         return
     
     domain_to_scan = context.args[0]
-    await update.message.reply_text(f"🔍 جاري البحث السريع عن نطاقات {domain_to_scan}...")
+    await update.message.reply_text(f"🔍 جاري البحث عن نطاقات {domain_to_scan}...")
     
     results = await search_urlscan_list_async(f"page.domain:{domain_to_scan}")
     await process_and_send_results(update, context, results, f"للنطاق {domain_to_scan}")
 
 async def asn_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
-        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.\nرابط المجموعة: https://t.me/{GROUP_USERNAME}")
+        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.")
         return
 
     if not context.args:
-        await update.message.reply_text("الرجاء تحديد رقم ASN. مثال: /asn AS15169")
+        await update.message.reply_text("مثال: /asn AS15169")
         return
     
     asn_to_scan = context.args[0].upper()
     if not asn_to_scan.startswith("AS"):
         asn_to_scan = "AS" + asn_to_scan
 
-    await update.message.reply_text(f"🔍 جاري البحث السريع عن النطاقات المرتبطة بـ {asn_to_scan}...")
+    await update.message.reply_text(f"🔍 جاري البحث عن النطاقات المرتبطة بـ {asn_to_scan}...")
     results = await search_urlscan_list_async(f"asn:{asn_to_scan}")
     await process_and_send_results(update, context, results, f"للرقم {asn_to_scan}")
 
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
-        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.\nرابط المجموعة: https://t.me/{GROUP_USERNAME}")
+        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.")
         return
 
     if not context.args:
-        await update.message.reply_text("الرجاء تحديد اسم النطاق. مثال: /info google.com")
+        await update.message.reply_text("مثال: /info google.com")
         return
     
     domain = context.args[0]
@@ -193,11 +192,11 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def screenshot_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
-        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.\nرابط المجموعة: https://t.me/{GROUP_USERNAME}")
+        await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.")
         return
 
     if not context.args:
-        await update.message.reply_text("الرجاء تحديد اسم النطاق. مثال: /screenshot google.com")
+        await update.message.reply_text("مثال: /screenshot google.com")
         return
     
     domain = context.args[0]
@@ -214,13 +213,12 @@ async def screenshot_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await sent_message.delete()
 
 async def process_and_send_results(update: Update, context: ContextTypes.DEFAULT_TYPE, results: list[str] | None, target_info: str):
-    # تم تعديل هذا الشرط ليكون أوضح
     if results is None:
         await update.message.reply_text("حدث خطأ أثناء البحث. يرجى المحاولة مرة أخرى لاحقاً.")
     elif not results:
         await update.message.reply_text(f"لم يتم العثور على أي نطاقات {target_info}.")
     else:
-        results_text = f"✅ تم العثور على {len(results)} نطاق (عينة سريعة) {target_info}:\n\n"
+        results_text = f"✅ تم العثور على {len(results)} نطاق {target_info}:\n\n"
         message_body = "\n".join(results)
         
         if len(results_text + message_body) > 4096:
