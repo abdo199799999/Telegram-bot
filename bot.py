@@ -23,12 +23,13 @@ logger = logging.getLogger(__name__)
 
 # --- دوال مساعدة للتفاعل مع urlscan.io API ---
 
-# ⭐️⭐️⭐️ تم إصلاح منطق الحلقة ومعالجة حدود الاستخدام ⭐️⭐️⭐️
-async def search_urlscan_list_async(query: str, context: ContextTypes.DEFAULT_TYPE) -> list[str] | None:
+# ⭐️⭐️⭐️ استعادة دالة البحث الأصلية التي كانت تعمل مع تحسين بسيط ⭐️⭐️⭐️
+async def search_urlscan_list_async(query: str) -> list[str] | None:
     headers = {"API-Key": URLSCAN_API_KEY}
     domains = set()
     search_after = None
-    max_pages = 5
+    # إضافة حد أقصى لعدد الصفحات لمنع البحث الطويل جداً
+    max_pages = 5  # سيجلب حتى 5000 نتيجة كحد أقصى (5 صفحات * 1000 نتيجة)
     current_page = 0
 
     try:
@@ -41,22 +42,18 @@ async def search_urlscan_list_async(query: str, context: ContextTypes.DEFAULT_TY
             logger.info(f"Fetching page {current_page} for query: {query}")
             response = await asyncio.to_thread(requests.get, "https://urlscan.io/api/v1/search/", params=params, headers=headers)
             
-            # -- الإصلاح الرئيسي هنا --
             if response.status_code == 429:
-                logger.warning("Rate limit hit. Stopping search and returning collected results.")
-                # إرسال رسالة للمستخدم لإعلامه
-                await context.bot.send_message(
-                    chat_id=context._chat_id,
-                    text="⚠️ تم الوصول إلى حد الاستخدام (Rate Limit). سيتم عرض النتائج التي تم جمعها حتى الآن."
-                )
-                break # اخرج من الحلقة فوراً
-
+                logger.warning("Rate limit hit. Waiting for 60 seconds.")
+                await asyncio.sleep(60)
+                current_page -= 1 # إعادة محاولة نفس الصفحة
+                continue
+            
             response.raise_for_status()
             data = response.json()
             results = data.get("results", [])
             
             if not results:
-                break
+                break # لا توجد نتائج، توقف
             
             for result in results:
                 page_domain = result.get("page", {}).get("domain")
@@ -65,16 +62,14 @@ async def search_urlscan_list_async(query: str, context: ContextTypes.DEFAULT_TY
             
             if data.get("has_more"):
                 search_after = results[-1]["sort"]
-                await asyncio.sleep(1)
+                await asyncio.sleep(1) # انتظار بسيط بين الطلبات
             else:
-                break
+                break # لا توجد صفحات أخرى، توقف
         
         return sorted(list(domains))
     except Exception as e:
         logger.error(f"An unexpected error occurred with urlscan.io search: {e}", exc_info=True)
         return None
-
-# --- (بقية الكود لم يتغير) ---
 
 async def get_single_scan_results_async(domain: str) -> dict | None:
     headers = {"API-Key": URLSCAN_API_KEY, "Content-Type": "application/json"}
@@ -105,6 +100,7 @@ async def get_single_scan_results_async(domain: str) -> dict | None:
         logger.error(f"An unexpected error occurred in get_single_scan_results_async: {e}", exc_info=True)
         return None
 
+# --- بقية الكود كما هو ---
 async def is_user_in_group(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=GROUP_ID, user_id=user_id)
@@ -132,7 +128,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             f"رابط المجموعة: https://t.me/{GROUP_USERNAME}"
         )
 
-# ⭐️⭐️⭐️ تم تعديل هذه الأوامر لتمرير 'context' ⭐️⭐️⭐️
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_user_in_group(update.effective_user.id, context):
         await update.message.reply_text(f"عذراً، يجب عليك الانضمام إلى المجموعة أولاً.")
@@ -145,7 +140,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     domain_to_scan = context.args[0]
     await update.message.reply_text(f"🔍 جاري البحث عن نطاقات {domain_to_scan}...")
     
-    results = await search_urlscan_list_async(f"page.domain:{domain_to_scan}", context)
+    results = await search_urlscan_list_async(f"page.domain:{domain_to_scan}")
     await process_and_send_results(update, context, results, f"للنطاق {domain_to_scan}")
 
 async def asn_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -162,7 +157,7 @@ async def asn_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         asn_to_scan = "AS" + asn_to_scan
 
     await update.message.reply_text(f"🔍 جاري البحث عن النطاقات المرتبطة بـ {asn_to_scan}...")
-    results = await search_urlscan_list_async(f"asn:{asn_to_scan}", context)
+    results = await search_urlscan_list_async(f"asn:{asn_to_scan}")
     await process_and_send_results(update, context, results, f"للرقم {asn_to_scan}")
 
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
