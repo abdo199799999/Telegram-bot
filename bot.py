@@ -23,41 +23,36 @@ logger = logging.getLogger(__name__)
 
 # --- دوال مساعدة للتفاعل مع urlscan.io API ---
 
+# ⭐️⭐️⭐️ تم تعديل هذه الدالة لتكون أسرع ⭐️⭐️⭐️
 async def search_urlscan_list_async(query: str) -> list[str] | None:
     headers = {"API-Key": URLSCAN_API_KEY}
     domains = set()
-    search_after = None
+    
     try:
-        while True:
-            params = {"q": query, "size": 1000}
-            if search_after:
-                params["search_after"] = f"{search_after[0]},{search_after[1]}"
-            
+        # نقوم بطلب صفحة واحدة فقط بحجم 1000
+        params = {"q": query, "size": 1000}
+        
+        response = await asyncio.to_thread(requests.get, "https://urlscan.io/api/v1/search/", params=params, headers=headers)
+        
+        # التعامل مع حدود الاستخدام (Rate Limit)
+        if response.status_code == 429:
+            logger.warning("Rate limit hit. Waiting for 60 seconds.")
+            await asyncio.sleep(60)
+            # محاولة أخرى بعد الانتظار
             response = await asyncio.to_thread(requests.get, "https://urlscan.io/api/v1/search/", params=params, headers=headers)
-            
-            if response.status_code == 429:
-                logger.warning("Rate limit hit. Waiting for 60 seconds.")
-                await asyncio.sleep(60)
-                continue
-            
-            response.raise_for_status()
-            data = response.json()
-            results = data.get("results", [])
-            
-            if not results:
-                break
-            
-            for result in results:
-                page_domain = result.get("page", {}).get("domain")
-                if page_domain:
-                    domains.add(page_domain)
-            
-            if data.get("has_more"):
-                search_after = results[-1]["sort"]
-                await asyncio.sleep(1)
-            else:
-                break
+
+        response.raise_for_status()
+        data = response.json()
+        results = data.get("results", [])
+        
+        for result in results:
+            page_domain = result.get("page", {}).get("domain")
+            if page_domain:
+                domains.add(page_domain)
+        
+        # لقد أزلنا حلقة `while` التي كانت تجلب الصفحات التالية، مما يجعل البحث سريعاً جداً
         return sorted(list(domains))
+
     except Exception as e:
         logger.error(f"An unexpected error occurred with urlscan.io search: {e}", exc_info=True)
         return None
@@ -107,7 +102,7 @@ async def is_user_in_group(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await is_user_in_group(update.effective_user.id, context):
         await update.message.reply_text(
-            "أهلاً بك! أنا بوت البحث المتقدم.\n\n"
+            "أهلاً بك! أنا بوت البحث السريع.\n\n"
             "استخدم الأوامر التالية:\n"
             "🔹 `/scan domain.com` للبحث عن النطاقات الفرعية.\n"
             "🔹 `/asn AS15169` للبحث عن النطاقات المرتبطة برقم ASN.\n"
@@ -130,7 +125,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     
     domain_to_scan = context.args[0]
-    await update.message.reply_text(f"🔍 جاري البحث الدقيق عن نطاقات {domain_to_scan}...")
+    await update.message.reply_text(f"🔍 جاري البحث السريع عن نطاقات {domain_to_scan}...")
     
     results = await search_urlscan_list_async(f"page.domain:{domain_to_scan}")
     await process_and_send_results(update, context, results, f"للنطاق {domain_to_scan}")
@@ -148,7 +143,7 @@ async def asn_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not asn_to_scan.startswith("AS"):
         asn_to_scan = "AS" + asn_to_scan
 
-    await update.message.reply_text(f"🔍 جاري البحث عن النطاقات المرتبطة بـ {asn_to_scan}...")
+    await update.message.reply_text(f"🔍 جاري البحث السريع عن النطاقات المرتبطة بـ {asn_to_scan}...")
     results = await search_urlscan_list_async(f"asn:{asn_to_scan}")
     await process_and_send_results(update, context, results, f"للرقم {asn_to_scan}")
 
@@ -210,7 +205,8 @@ async def process_and_send_results(update: Update, context: ContextTypes.DEFAULT
     elif not results:
         await update.message.reply_text(f"لم يتم العثور على أي نطاقات {target_info}.")
     else:
-        results_text = f"✅ تم العثور على {len(results)} نطاق {target_info}:\n\n"
+        # تعديل الرسالة لتوضح أن هذه النتائج هي عينة سريعة
+        results_text = f"✅ تم العثور على {len(results)} نطاق (عينة سريعة) {target_info}:\n\n"
         message_body = "\n".join(results)
         
         if len(results_text + message_body) > 4096:
