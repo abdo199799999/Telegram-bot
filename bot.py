@@ -23,39 +23,53 @@ logger = logging.getLogger(__name__)
 
 # --- دوال مساعدة للتفاعل مع urlscan.io API ---
 
-# ⭐️⭐️⭐️ تم تعديل هذه الدالة لتكون أسرع ⭐️⭐️⭐️
+# ⭐️⭐️⭐️ تم إصلاح هذه الدالة لتكون سريعة وقوية ⭐️⭐️⭐️
 async def search_urlscan_list_async(query: str) -> list[str] | None:
     headers = {"API-Key": URLSCAN_API_KEY}
     domains = set()
+    params = {"q": query, "size": 1000}
     
     try:
-        # نقوم بطلب صفحة واحدة فقط بحجم 1000
-        params = {"q": query, "size": 1000}
+        # استخدام `await asyncio.to_thread` للقيام بالطلب في thread منفصل
+        response = await asyncio.to_thread(
+            requests.get, 
+            "https://urlscan.io/api/v1/search/", 
+            params=params, 
+            headers=headers
+        )
         
-        response = await asyncio.to_thread(requests.get, "https://urlscan.io/api/v1/search/", params=params, headers=headers)
-        
-        # التعامل مع حدود الاستخدام (Rate Limit)
+        # التحقق من حالة الاستجابة أولاً
         if response.status_code == 429:
-            logger.warning("Rate limit hit. Waiting for 60 seconds.")
-            await asyncio.sleep(60)
-            # محاولة أخرى بعد الانتظار
-            response = await asyncio.to_thread(requests.get, "https://urlscan.io/api/v1/search/", params=params, headers=headers)
-
+            logger.warning("Rate limit hit. Please try again in a minute.")
+            # يمكن إرجاع قائمة فارغة أو رسالة خطأ محددة
+            return [] 
+        
+        # إطلاق استثناء لأي أخطاء أخرى (مثل 400, 500)
         response.raise_for_status()
+        
         data = response.json()
         results = data.get("results", [])
         
+        if not results:
+            # إذا لم تكن هناك نتائج، أرجع قائمة فارغة
+            return []
+
         for result in results:
             page_domain = result.get("page", {}).get("domain")
             if page_domain:
                 domains.add(page_domain)
         
-        # لقد أزلنا حلقة `while` التي كانت تجلب الصفحات التالية، مما يجعل البحث سريعاً جداً
         return sorted(list(domains))
 
+    except requests.exceptions.RequestException as e:
+        # هذا يلتقط أخطاء الشبكة و HTTP بشكل أفضل
+        logger.error(f"A network or HTTP error occurred: {e}", exc_info=True)
+        return None # يشير إلى فشل حقيقي
     except Exception as e:
-        logger.error(f"An unexpected error occurred with urlscan.io search: {e}", exc_info=True)
+        # يلتقط أي أخطاء أخرى غير متوقعة (مثل خطأ في تحليل JSON)
+        logger.error(f"An unexpected error occurred in search_urlscan_list_async: {e}", exc_info=True)
         return None
+
 
 async def get_single_scan_results_async(domain: str) -> dict | None:
     headers = {"API-Key": URLSCAN_API_KEY, "Content-Type": "application/json"}
@@ -200,12 +214,12 @@ async def screenshot_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await sent_message.delete()
 
 async def process_and_send_results(update: Update, context: ContextTypes.DEFAULT_TYPE, results: list[str] | None, target_info: str):
+    # تم تعديل هذا الشرط ليكون أوضح
     if results is None:
-        await update.message.reply_text("حدث خطأ أثناء البحث.")
+        await update.message.reply_text("حدث خطأ أثناء البحث. يرجى المحاولة مرة أخرى لاحقاً.")
     elif not results:
         await update.message.reply_text(f"لم يتم العثور على أي نطاقات {target_info}.")
     else:
-        # تعديل الرسالة لتوضح أن هذه النتائج هي عينة سريعة
         results_text = f"✅ تم العثور على {len(results)} نطاق (عينة سريعة) {target_info}:\n\n"
         message_body = "\n".join(results)
         
